@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local LLM Studio — RAG Chat</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d2e; --surface2: #252840;
+      --border: #2e3258; --accent: #6c63ff; --accent2: #a78bfa;
+      --text: #e2e8f0; --muted: #8892b0; --danger: #f87171;
+      --success: #34d399; --radius: 10px;
+    }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+    }
+    header h1 { font-size: 18px; color: var(--accent2); }
+    header span { font-size: 12px; color: var(--muted); }
+
+    .layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 280px; background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
+
+    select, input[type=text], input[type=number] {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 13px;
+    }
+    select:focus, input:focus { outline: none; border-color: var(--accent); }
+
+    button {
+      cursor: pointer; border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 500; transition: opacity .15s;
+    }
+    button:hover { opacity: .85; }
+
+    .btn-primary { background: var(--accent); color: #fff; padding: 8px 14px; }
+    .btn-danger  { background: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 4px 8px; font-size: 11px; }
+    .btn-sm      { padding: 6px 10px; background: var(--surface2); color: var(--text); }
+
+    .upload-area {
+      border: 2px dashed var(--border); border-radius: var(--radius); padding: 14px;
+      text-align: center; cursor: pointer; transition: border-color .2s; background: var(--surface2);
+    }
+    .upload-area:hover { border-color: var(--accent); }
+    .upload-area input { display: none; }
+    .upload-area p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    #doc-list { list-style: none; max-height: 220px; overflow-y: auto; padding: 0; }
+    #doc-list li {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 8px; border-radius: 6px; font-size: 12px; gap: 8px;
+    }
+    #doc-list li:hover { background: var(--surface2); }
+    #doc-list .doc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* CHAT */
+    .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+    .msg { display: flex; gap: 10px; max-width: 88%; }
+    .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.assistant { align-self: flex-start; }
+
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 14px;
+    }
+    .msg.user .avatar { background: var(--accent); }
+    .msg.assistant .avatar { background: var(--surface2); border: 1px solid var(--border); }
+
+    .bubble {
+      padding: 10px 14px; border-radius: 12px; font-size: 14px;
+      line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .msg.assistant .bubble { background: var(--surface2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+    .sources { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .source-tag {
+      font-size: 10px; padding: 2px 7px; border-radius: 20px;
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    }
+
+    .typing { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+    .typing span {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
+      animation: bounce .9s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: .15s; }
+    .typing span:nth-child(3) { animation-delay: .3s; }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+    .input-bar {
+      padding: 14px 20px; border-top: 1px solid var(--border);
+      display: flex; gap: 10px; background: var(--surface); flex-shrink: 0;
+    }
+    #user-input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 10px 14px; font-size: 14px;
+      resize: none; font-family: inherit; min-height: 44px; max-height: 140px;
+    }
+    #user-input:focus { outline: none; border-color: var(--accent); }
+    #send-btn { background: var(--accent); color: #fff; padding: 0 18px; border-radius: 8px; font-size: 18px; }
+
+    .status-bar {
+      font-size: 11px; color: var(--muted); padding: 4px 20px;
+      background: var(--surface); border-top: 1px solid var(--border); text-align: right;
+    }
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; background: var(--surface2);
+      border: 1px solid var(--border); color: var(--text); padding: 10px 16px;
+      border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .3s;
+      z-index: 9999;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+    .toast.success { border-color: var(--success); color: var(--success); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>🧠</div>
+  <h1>Local LLM Studio — RAG Chat</h1>
+  <span id="llm-status">Connecting to LLM…</span>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- Collection selector -->
+    <div class="sidebar-section">
+      <h3>Collection (Knowledge Base)</h3>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <select id="collection-select" style="flex:1"></select>
+        <button class="btn-sm" onclick="refreshCollections()">↻</button>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="new-collection" placeholder="New collection name…" style="flex:1" />
+        <button class="btn-primary" onclick="createCollection()">+</button>
+      </div>
+    </div>
+
+    <!-- Document upload -->
+    <div class="sidebar-section">
+      <h3>Upload Document</h3>
+      <label class="upload-area" id="drop-zone">
+        <input type="file" id="file-input" accept=".pdf,.txt,.md,.docx" />
+        <div>📄 Click or drop file</div>
+        <p>PDF, TXT, MD, DOCX</p>
+      </label>
+      <button class="btn-primary" style="width:100%;margin-top:8px;" onclick="uploadDocument()">Ingest Document</button>
+    </div>
+
+    <!-- Document list -->
+    <div class="sidebar-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <h3>Indexed Documents</h3>
+      <ul id="doc-list"></ul>
+    </div>
+
+    <!-- Settings -->
+    <div class="sidebar-section">
+      <h3>Settings</h3>
+      <label style="font-size:12px;color:var(--muted)">Context chunks (n_results)</label>
+      <input type="number" id="n-results" value="5" min="1" max="20" style="margin-top:4px;" />
+    </div>
+
+  </aside>
+
+  <!-- CHAT AREA -->
+  <div class="chat-area">
+    <div id="messages">
+      <div class="msg assistant">
+        <div class="avatar">🤖</div>
+        <div class="bubble">Hello! Upload documents in the sidebar and I'll answer questions grounded in their content. Ask me anything.</div>
+      </div>
+    </div>
+    <div class="input-bar">
+      <textarea id="user-input" rows="1" placeholder="Ask a question about your documents…"></textarea>
+      <button id="send-btn" onclick="sendMessage()">➤</button>
+    </div>
+    <div class="status-bar" id="status-bar">Ready</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin.replace('3001','8001');
+
+async function api(method, path, body=null, formData=null) {
+  const opts = { method, headers: {} };
+  if (body)     { opts.body = JSON.stringify(body); opts.headers['Content-Type']='application/json'; }
+  if (formData) { opts.body = formData; }
+  const r = await fetch(API+path, opts);
+  if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail||r.statusText); }
+  return r.json();
+}
+
+function toast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast show ${type}`;
+  setTimeout(() => t.className='toast', 3000);
+}
+
+function setStatus(msg) { document.getElementById('status-bar').textContent = msg; }
+
+async function checkLLM() {
+  try {
+    await api('GET', '/health');
+    document.getElementById('llm-status').textContent = '✅ LLM Server Online';
+    document.getElementById('llm-status').style.color = 'var(--success)';
+  } catch {
+    document.getElementById('llm-status').textContent = '⚠ LLM Server Offline';
+    document.getElementById('llm-status').style.color = 'var(--danger)';
+  }
+}
+
+async function refreshCollections() {
+  const r = await api('GET','/rag/collections').catch(e=>{ toast(e.message,'error'); return null; });
+  if (!r) return;
+  const sel = document.getElementById('collection-select');
+  const cur = sel.value;
+  sel.innerHTML = r.collections.map(c=>`<option>${c.name}</option>`).join('');
+  if (!sel.querySelector(`option[value="${cur}"]`)) {
+    if (!r.collections.length) {
+      const d = document.createElement('option'); d.textContent='default'; sel.appendChild(d);
+    }
+  } else { sel.value = cur; }
+  refreshDocuments();
+}
+
+async function createCollection() {
+  const name = document.getElementById('new-collection').value.trim();
+  if (!name) return;
+  await api('POST','/rag/collections',{name}).catch(e=>toast(e.message,'error'));
+  document.getElementById('new-collection').value='';
+  toast(`Collection "${name}" created`,'success');
+  await refreshCollections();
+  document.getElementById('collection-select').value = name;
+}
+
+async function refreshDocuments() {
+  const col = document.getElementById('collection-select').value;
+  if (!col) return;
+  const r = await api('GET',`/rag/documents?collection=${col}`).catch(()=>({documents:[]}));
+  const ul = document.getElementById('doc-list');
+  ul.innerHTML = r.documents.map(d=>`
+    <li>
+      <span class="doc-name" title="${d.filename}">📄 ${d.filename}</span>
+      <button class="btn-danger" onclick="deleteDoc('${d.doc_id}')">✕</button>
+    </li>`).join('') || '<li style="color:var(--muted);font-size:12px;padding:6px">No documents yet</li>';
+}
+
+async function deleteDoc(doc_id) {
+  const col = document.getElementById('collection-select').value;
+  await api('DELETE',`/rag/documents/${doc_id}?collection=${col}`).catch(e=>toast(e.message,'error'));
+  toast('Document removed','success');
+  refreshDocuments();
+}
+
+async function uploadDocument() {
+  const fi = document.getElementById('file-input');
+  if (!fi.files.length) { toast('Select a file first','error'); return; }
+  const col = document.getElementById('collection-select').value;
+  const fd = new FormData();
+  fd.append('file', fi.files[0]);
+  fd.append('collection', col);
+  setStatus(`Ingesting ${fi.files[0].name}…`);
+  try {
+    const r = await api('POST','/rag/ingest',null,fd);
+    toast(`✅ Indexed ${r.chunks_indexed} chunks from ${r.filename}`,'success');
+    fi.value=''; refreshDocuments();
+  } catch(e) { toast(e.message,'error'); }
+  setStatus('Ready');
+}
+
+function appendMsg(role, content, sources=[]) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  let sourcesHtml = '';
+  if (sources.length) {
+    sourcesHtml = `<div class="sources">${sources.map(s=>`<span class="source-tag">📄 ${s.filename}</span>`).join('')}</div>`;
+  }
+  div.innerHTML = `
+    <div class="avatar">${role==='user'?'👤':'🤖'}</div>
+    <div>
+      <div class="bubble">${content}</div>
+      ${sourcesHtml}
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function showTyping() {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className='msg assistant'; div.id='typing-indicator';
+  div.innerHTML=`<div class="avatar">🤖</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  msgs.appendChild(div); msgs.scrollTop=msgs.scrollHeight;
+}
+
+function removeTyping() { document.getElementById('typing-indicator')?.remove(); }
+
+async function sendMessage() {
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  appendMsg('user', text);
+  showTyping();
+  setStatus('Thinking…');
+  const col = document.getElementById('collection-select').value;
+  const n = parseInt(document.getElementById('n-results').value)||5;
+  try {
+    const r = await api('POST','/rag/chat',{message:text, collection:col, n_results:n});
+    removeTyping();
+    appendMsg('assistant', r.answer, r.sources);
+    setStatus(`Done — ${r.context_chunks_used} context chunks used | model: ${r.model}`);
+  } catch(e) {
+    removeTyping();
+    appendMsg('assistant', `⚠ Error: ${e.message}`);
+    setStatus('Error');
+  }
+}
+
+document.getElementById('user-input').addEventListener('keydown', e => {
+  if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+// Drag-and-drop
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.style.borderColor='var(--accent)'; });
+dz.addEventListener('dragleave', ()=>dz.style.borderColor='');
+dz.addEventListener('drop', e=>{ e.preventDefault(); dz.style.borderColor='';
+  document.getElementById('file-input').files = e.dataTransfer.files; });
+
+// Init
+checkLLM();
+refreshCollections();
+document.getElementById('collection-select').addEventListener('change', refreshDocuments);
+</script>
+</body>
+</html>
