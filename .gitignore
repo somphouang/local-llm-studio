@@ -1,0 +1,25 @@
+# Environments
+venv/
+venv_linux/
+.env
+
+# Models
+models/
+*.gguf
+
+# Offline Packaging
+offline_packages/
+local-llm-studio-offline.tar.gz
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+server.log
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
