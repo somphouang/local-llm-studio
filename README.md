@@ -1,124 +1,436 @@
-# Local LLM Studio (Air-gapped & Offline Ready)
+# Local LLM Studio 🧠
 
-This repository provides a self-hosted, offline-ready Large Language Model (LLM) ecosystem. It utilizes the highly efficient `llama.cpp` engine backed by Hugging Face GGUF weights, providing maximum CPU/GPU efficiency. The runtime exposes an OpenAI-compatible API, allowing seamless integration with tools like AI Studio, LangChain, Autogen, and VSCode extensions.
+A fully **offline, self-hosted** LLM environment with built-in **RAG (Retrieval-Augmented Generation)** and a **Vector Database**. Drop in your own documents and chat with your knowledge base entirely on your own hardware — no cloud, no internet required on the target machine.
+
+Powered by `llama.cpp` (GGUF engine) + `ChromaDB` + `sentence-transformers` + `FastAPI`.
 
 ---
 
 ## 📑 Table of Contents
-1. [Prerequisites](#-prerequisites)
-2. [Get Started: Developer Setup (Online)](#-get-started-developer-setup-online)
-3. [Setup Guide: Host Machine Deployment (Offline)](#-setup-guide-host-machine-deployment-offline)
-4. [How to Run (Single vs. Multi-Model)](#-how-to-run-single-vs-multi-model)
-5. [Supported Models Architecture](#-supported-models-architecture)
-6. [How to Run as Clusters](#-how-to-run-as-clusters)
-7. [Developer & System Changes](#-developer--system-changes)
+
+1. [Architecture Overview](#-architecture-overview)
+2. [Prerequisites](#-prerequisites)
+3. [Get Started (Developer — Online Machine)](#-get-started-developer--online-machine)
+4. [Developer Setup: Running Locally](#-developer-setup-running-locally)
+5. [RAG Setup Guide](#-rag-setup-guide)
+6. [Setup Guide: Deploying to a Host Machine (Offline)](#-setup-guide-deploying-to-a-host-machine-offline)
+7. [Running as a Cluster](#-running-as-a-cluster)
+8. [Configuration Reference](#-configuration-reference)
+9. [Supported Models](#-supported-models)
+10. [Project Structure](#-project-structure)
+
+---
+
+## 🏗 Architecture Overview
+
+```
+[Browser]
+   │
+   ├─► http://HOST:8001/ui    ◄── RAG Chat Web UI (native HTML/JS)
+   │
+   ▼
+[RAG Server — rag/app.py]  :8001   FastAPI
+   │  ┌─────────────────┐
+   ├─►│ ChromaDB (disk) │  Vector Search (local)
+   │  └─────────────────┘
+   │  ┌─────────────────────────────┐
+   ├─►│ sentence-transformers (CPU) │  Offline Embeddings
+   │  └─────────────────────────────┘
+   │
+   ▼
+[LLM Server — llama_cpp.server]  :8000   OpenAI-Compatible API
+   │
+   ▼
+[.gguf Model File]  (on local disk)
+```
+
+Both servers expose OpenAI-compatible API endpoints so any AI Agent framework (LangChain, AutoGen, Open WebUI) can point to them without modification.
 
 ---
 
 ## 🛑 Prerequisites
 
-Before deploying the pipeline, ensure your hardware and software meet these baseline requirements.
+### All Environments
 
-### Staging Environment (Internet-Connected Developer Machine)
-*   Python **3.10+** environment installed.
-*   Command-line permissions (Bash on Linux/WSL or PowerShell on Windows).
-*   Adequate disk space to download LLMs (typically 5GB to 50GB depending on model selection).
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.10+ | Required on staging and host |
+| Git | Any | For cloning this repo |
+| curl | Any | For testing endpoints |
 
-### Target Host Machine (Air-Gapped / Production Server)
-*   **Operating System**: Ubuntu 24.04 LTS, RHEL 9.x, or similar Linux derivatives.
-*   **Essential Development Tools**: To securely compile the C++ binaries natively offline, host packages are required. Run this sequence once:
-    ```bash
-    sudo apt-get update -y
-    sudo apt-get install -y python3-venv python3-pip build-essential
-    ```
-*   **Hardware Validation**: For heavy workloads (34B+ parameter models), a GPU with 24GB+ VRAM (e.g., RTX 3090, 4090, A100) is highly recommended. CPU inference works but is linearly slower.
+### Ubuntu 24.04 LTS (Developer or Host)
 
----
+```bash
+sudo apt-get update -y
+sudo apt-get install -y python3-venv python3-pip build-essential git curl
+```
 
-## 🚀 Get Started: Developer Setup (Online)
+### RHEL 9.x (Host / Air-gapped)
 
-You must securely capture all model weights and strictly locked Python dependencies (`requirements.txt`) before transferring them to an air-gapped host. 
+```bash
+sudo dnf install -y python3 python3-pip gcc gcc-c++ make git curl
+```
+> [!NOTE]
+> RHEL 9.x ships with Python 3.9 by default. Install Python 3.11 via SCL or compile from source if needed.
 
-1.  Review **[.env](.env)** and **[config.json](config.json)** to select your models.
-2.  Optionally modify `pack-online.sh` if you prefer to pull different `.gguf` weights natively.
-3.  Execute the packaging script from your internet-connected dev machine:
-    ```bash
-    chmod +x pack-online.sh
-    ./pack-online.sh
-    ```
-4.  Once finished, securely transfer the generated `local-llm-studio-offline.tar.gz` object into your protected production environment.
+### Windows (Developer Machine Only)
 
----
+- Python 3.10+ from [python.org](https://python.org) — check **"Add to PATH"** during install.
+- Git for Windows from [git-scm.com](https://git-scm.com).
+- Optionally: **WSL 2** with Ubuntu 24.04 for the closest parity to production.
 
-## 🛠️ Setup Guide: Host Machine Deployment (Offline)
+### GPU (Optional but Recommended)
 
-Navigate to your target air-gapped machine.
+| GPU | Min VRAM | Recommended For |
+|---|---|---|
+| NVIDIA RTX 3060 | 12 GB | 7B–13B models |
+| NVIDIA RTX 3090/4090 | 24 GB | 13B–34B models |
+| NVIDIA A100 | 80 GB | 70B models |
 
-1.  Extract the offline payload:
-    ```bash
-    tar -xzvf local-llm-studio-offline.tar.gz
-    cd local-llm-studio-offline
-    ```
-2.  Deploy the offline dependencies. This script intelligently assesses your target machine's operating system, isolates a virtual environment (`venv`), and compiles the `llama.cpp` backend using strictly local `.whl` files seamlessly bypassing PyPI architectures:
-    ```bash
-    chmod +x deploy-offline.sh
-    ./deploy-offline.sh
-    ```
+For NVIDIA GPU support, `llama-cpp-python` must be compiled with CUDA. Set `N_GPU_LAYERS=-1` in `.env`.
 
 ---
 
-## ⚡ How to Run (Single vs. Multi-Model)
+## 🚀 Get Started (Developer — Online Machine)
 
-The system gracefully scales between running a core single intelligence, or concurrently multiplexing differing paradigms. 
+This step downloads all model weights and Python wheel files so the entire system can be reproduced completely offline.
 
-### Multi-Model Execution (Default)
-By default, the `.env` sets `MULTI_MODEL_CONFIG=./config.json`.
-1.  Open **[config.json](config.json)** to configure an array of models running identically alongside each other.
-2.  Fire up the server:
-    ```bash
-    chmod +x start-server.sh
-    ./start-server.sh
-    ```
-When utilizing the OpenAI compatible endpoints, your tools can route logic by hitting `/v1/chat/completions` and supplying `"model": "llama-3-8b"` or `"model": "qwen-test"` based on the `model_alias` configuration!
+### 1. Clone the repository
 
-### Single Model Execution
-If you wish to force maximum hardware acceleration onto one parameter limit:
-1.  Open `.env` and **empty** the configuration: `MULTI_MODEL_CONFIG=` 
-2.  It will intelligently default mapping inference directly to `MODEL_PATH`.
+```bash
+git clone https://github.com/somphouang/local-llm-studio.git
+cd local-llm-studio
+```
 
-Once online, query API documentation at `http://127.0.0.1:8000/docs`!
+### 2. Configure your model selection
 
----
+Open `.env` and review the default:
 
-## 📚 Supported Models Architecture
+```ini
+# Default: Meta Llama 3 8B (good balance of speed and quality)
+MODEL_PATH=./models/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf
 
-We extensively categorize the greatest open-weight AI algorithms deployable today spanning edge latency testing to extreme Enterprise MoE infrastructures.
+# For multi-model support:
+MULTI_MODEL_CONFIG=./config.json
+```
 
-**🔗 [Reference the massive SUPPORTED_MODELS.md catalog here.](SUPPORTED_MODELS.md)**
-*(Contains Gemini, Meta Llama, Phi-3, Mistral, Grok, Qwen, DeepSeek).*
+Browse [`SUPPORTED_MODELS.md`](SUPPORTED_MODELS.md) for the full catalog with exact repo IDs and filenames.
 
----
+### 3. Run the packaging script
 
-## 🌐 How to Run as Clusters
+```bash
+chmod +x pack-online.sh
+./pack-online.sh
+```
 
-If your analytical demand outscales individual host architecture, this `llama_cpp.server` ecosystem can be scaled horizontally and vertically through **Clustered Inference**:
+This will:
+- Download all Python wheels (`requirements.txt` + `requirements-rag.txt`) into `offline_packages/`
+- Download the GGUF model into `models/`
+- Download and cache the `all-MiniLM-L6-v2` embedding model into `rag_storage/embedding_models/`
+- Bundle everything into `local-llm-studio-offline.tar.gz`
 
-### 1. High Availability (HA) Load Balancing (Horizontal)
-To dramatically increase throughput for high-volume enterprise API queries:
-*   Deploy this `local-llm-studio` offline payload across identical **N** numbers of Host Machines.
-*   Deploy an **Nginx** or **HAProxy** load balancer immediately upstream.
-*   Configure the load balancer to distribute standard `/v1/chat/completions` POST requests across the worker nodes concurrently via Round-Robin load manipulation.
-
-### 2. Physical Tensor Splitting via RPC (Vertical)
-If a single model (e.g., Llama-3 70B parameter) is **too massive** to fit into the VRAM of a single host:
-*   Use `llama.cpp`'s bleeding-edge `llama-server` RPC functionality to manually split `.gguf` architecture layers across physical instances utilizing High-Bandwidth networking (10Gbps+).
-*   *(Note: This vertical orchestration bypasses Python wrappers. Require manual compilation of binary nodes parsing `--rpc` mappings).*
+Transfer `local-llm-studio-offline.tar.gz` to your air-gapped machine via secure USB or internal network share.
 
 ---
 
-## 🏗️ Developer & System Changes
+## 💻 Developer Setup: Running Locally
 
-Core environment files modified in this iteration:
-*   **`requirements.txt`**: Completely rigid version pinning for predictable, immutable security validation matching our isolated WSL test vectors.
-*   **`config.json`**: New implementation allowing seamless multi-agent model multiplexing.
-*   **Python Bindings**: Python's native `from huggingface_hub import hf_hub_download` replaced arbitrary cli utilities solving critical pathing bugs across OS distributions.
+For local development and testing on an internet-connected machine.
+
+### 1. Create a virtual environment
+
+```bash
+# Linux / macOS / WSL
+python3 -m venv venv
+source venv/bin/activate
+
+# Windows PowerShell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+```
+
+### 2. Install all dependencies
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-rag.txt
+```
+
+> [!NOTE]
+> `llama-cpp-python` requires a C++ compiler. It will compile automatically during install — this takes 5–10 minutes the first time.
+
+### 3. Download a test model (tiny — fast CPU inference)
+
+```bash
+python -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download(
+    repo_id='TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF',
+    filename='tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
+    local_dir='./models',
+    local_dir_use_symlinks=False
+)
+"
+```
+
+Then update `.env`:
+```ini
+MODEL_PATH=./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+MULTI_MODEL_CONFIG=
+```
+
+### 4. Run the automated test
+
+```bash
+# Linux / WSL
+bash test-locally.sh
+
+# Windows PowerShell
+.\test-locally.ps1
+```
+
+A successful test returns a JSON response from `http://127.0.0.1:8000/v1/chat/completions` and prints the LLM's answer to your terminal.
+
+---
+
+## 📚 RAG Setup Guide
+
+The RAG system lets you upload documents (PDF, DOCX, TXT, Markdown) and have conversations grounded in their content.
+
+### How it works
+
+1. **Ingest** — upload a document → text is extracted and split into chunks → each chunk is embedded into a vector using `sentence-transformers/all-MiniLM-L6-v2` → stored in ChromaDB on disk.
+2. **Chat** — your question is embedded → top matching chunks are retrieved from ChromaDB → chunks + question are sent to the LLM → grounded answer returned with source citations.
+
+### Running the full stack locally
+
+Open **two terminals**:
+
+**Terminal 1 — LLM Inference Server:**
+```bash
+chmod +x start-server.sh
+./start-server.sh
+# Server running on http://0.0.0.0:8000
+# Swagger docs: http://localhost:8000/docs
+```
+
+**Terminal 2 — RAG API + Web UI:**
+```bash
+chmod +x start-rag-server.sh
+./start-rag-server.sh
+# RAG API running on http://0.0.0.0:8001
+# Chat UI: http://localhost:8001/ui
+```
+
+### Using the RAG Chat UI
+
+Open `http://localhost:8001/ui` in your browser:
+
+1. **Create a collection** — type a name (e.g., `company-docs`) and click `+`.
+2. **Upload documents** — drag and drop or browse. Supported: `.pdf`, `.txt`, `.md`, `.docx`.
+3. **Chat** — type a question and hit Enter. The answer cites the relevant source documents.
+
+### RAG REST API
+
+You can also call the RAG API directly for agent integration:
+
+```bash
+# Ingest a document
+curl -X POST http://localhost:8001/rag/ingest \
+  -F "file=@/path/to/report.pdf" \
+  -F "collection=my-docs"
+
+# Chat with context
+curl -X POST http://localhost:8001/rag/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Summarize the key findings", "collection": "my-docs"}'
+
+# List all documents in a collection
+curl http://localhost:8001/rag/documents?collection=my-docs
+
+# Delete a document
+curl -X DELETE http://localhost:8001/rag/documents/<doc_id>?collection=my-docs
+```
+
+### Adding / Removing Knowledge Documents
+
+- **Add:** Upload via the UI or `POST /rag/ingest`.
+- **Remove:** Click the `✕` button in the UI next to a document, or call `DELETE /rag/documents/{doc_id}`.
+- **Collections** are independent knowledge bases — create separate ones for different topics (e.g. `hr-policy`, `tech-specs`, `legal`).
+
+---
+
+## 🛠 Setup Guide: Deploying to a Host Machine (Offline)
+
+### 1. Transfer and extract
+
+```bash
+tar -xzvf local-llm-studio-offline.tar.gz
+cd local-llm-studio-offline
+```
+
+### 2. Run the offline deployment script
+
+```bash
+chmod +x deploy-offline.sh
+./deploy-offline.sh
+```
+
+This will:
+- Detect your OS (Debian/Ubuntu vs RHEL/other)
+- Install `python3-venv`, `python3-pip`, `build-essential` if missing (Ubuntu)
+- Create an isolated `venv/`
+- Install **all packages from local wheels** — zero PyPI traffic
+
+### 3. Start the LLM Server
+
+```bash
+chmod +x start-server.sh
+./start-server.sh
+```
+
+### 4. (Optional) Start the RAG Server
+
+```bash
+chmod +x start-rag-server.sh
+./start-rag-server.sh
+```
+
+### Connecting AI Clients
+
+Both servers expose OpenAI-compatible APIs:
+
+| Service | URL | Auth |
+|---|---|---|
+| LLM Chat Completions | `http://HOST:8000/v1/chat/completions` | None |
+| LLM Swagger Docs | `http://HOST:8000/docs` | None |
+| RAG Chat | `http://HOST:8001/rag/chat` | None |
+| RAG Web UI | `http://HOST:8001/ui` | None |
+
+Point any OpenAI-SDK client to `http://HOST:8000/v1` with API key `local`.
+
+---
+
+## 🌐 Running as a Cluster
+
+### Horizontal — Load Balancing Multiple Nodes
+
+Deploy the offline tarball to N identical host machines, then place an Nginx or HAProxy upstream:
+
+```nginx
+upstream llm_cluster {
+    server node1:8000;
+    server node2:8000;
+    server node3:8000;
+}
+server {
+    listen 80;
+    location /v1/ {
+        proxy_pass http://llm_cluster;
+    }
+}
+```
+
+Each node runs `start-server.sh` independently. The RAG server on each node shares its ChromaDB from a network-mounted volume (NFS/CIFS) to keep the vector index in sync.
+
+### Vertical — Large Model GPU Split (llama.cpp RPC)
+
+For models too large for a single GPU (e.g., 70B), `llama.cpp` supports native tensor splitting across machines via RPC. This requires compiling `llama-server` binaries manually with `--rpc` enabled on each node and is documented in the [llama.cpp RPC guide](https://github.com/ggerganov/llama.cpp/blob/master/docs/rpc.md).
+
+---
+
+## ⚙ Configuration Reference
+
+### `.env`
+
+| Variable | Default | Description |
+|---|---|---|
+| `MODEL_PATH` | `./models/Meta-Llama-3-8B...gguf` | Path to single GGUF model |
+| `MULTI_MODEL_CONFIG` | `./config.json` | JSON config for multiple models; leave empty for single-model mode |
+| `HOST` | `0.0.0.0` | LLM server bind address |
+| `PORT` | `8000` | LLM server port |
+| `N_CTX` | `8192` | Context window size (tokens) |
+| `N_THREADS` | `4` | CPU threads for inference |
+| `N_GPU_LAYERS` | `-1` | GPU layers to offload (`0` = CPU only, `-1` = all to GPU) |
+| `LLM_BASE_URL` | `http://127.0.0.1:8000/v1` | RAG server's LLM endpoint |
+| `LLM_MODEL` | `llama-3-8b` | Model alias for RAG chat requests |
+| `RAG_HOST` | `0.0.0.0` | RAG server bind address |
+| `RAG_PORT` | `8001` | RAG server port |
+| `CHROMA_DIR` | `./rag_storage/chroma` | ChromaDB persistence directory |
+| `EMBED_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Local embedding model |
+
+### `config.json` — Multi-Model Setup
+
+```json
+{
+  "host": "0.0.0.0",
+  "port": 8000,
+  "models": [
+    {
+      "model": "./models/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf",
+      "model_alias": "llama-3-8b",
+      "chat_format": "llama-3",
+      "n_ctx": 4096,
+      "n_gpu_layers": -1
+    },
+    {
+      "model": "./models/Mistral-7B-Instruct-v0.3.Q4_K_M.gguf",
+      "model_alias": "mistral-7b",
+      "chat_format": "mistral-instruct",
+      "n_ctx": 4096,
+      "n_gpu_layers": -1
+    }
+  ]
+}
+```
+
+To add a model: copy one object in the `models` array, update `model` path and `model_alias`, restart `start-server.sh`.
+
+---
+
+## 📋 Supported Models
+
+See the full catalog with download coordinates, hardware requirements, and specialty categories:
+
+🔗 **[SUPPORTED_MODELS.md](SUPPORTED_MODELS.md)**
+
+Includes: Meta Llama 3, Mistral, Qwen, DeepSeek Coder, Microsoft Phi-3, Google Gemma, Dolphin, Mixtral, and more — organized by General Purpose · Coding & Math · Edge/CPU · Heavy GPU.
+
+---
+
+## 📁 Project Structure
+
+```
+local-llm-studio/
+├── .env                    # Runtime configuration (do not commit secrets)
+├── .env.example            # Template — safe to commit
+├── .gitignore
+├── config.json             # Multi-model server configuration
+├── config.example.json     # Example multi-model configuration
+├── requirements.txt        # Pinned Python deps for LLM server
+├── requirements-rag.txt    # Pinned Python deps for RAG server
+│
+├── pack-online.sh          # [Run ONLINE] Download wheels + models → tarball
+├── deploy-offline.sh       # [Run on HOST] Install wheels offline → venv
+├── start-server.sh         # Start LLM inference server (port 8000)
+├── start-rag-server.sh     # Start RAG API + Web UI (port 8001)
+│
+├── test-locally.sh         # Automated test (Linux / WSL)
+├── test-locally.ps1        # Automated test (Windows PowerShell)
+│
+├── models/                 # GGUF model files (git-ignored)
+├── rag_storage/            # ChromaDB + embedding cache (git-ignored)
+│   ├── chroma/             # Vector database
+│   └── embedding_models/   # Cached sentence-transformers model
+│
+├── rag/
+│   ├── app.py              # RAG FastAPI server
+│   ├── vectorstore.py      # ChromaDB wrapper
+│   ├── ingest.py           # PDF/DOCX/TXT/MD parser and chunker
+│   └── ui/
+│       └── index.html      # Native dark-mode RAG Chat Web UI
+│
+├── README.md
+├── SUPPORTED_MODELS.md     # Full LLM model catalog
+└── implementation_plan.md
+```
