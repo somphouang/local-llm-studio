@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastembed import TextEmbedding
 
-LANCE_DIR = os.getenv("CHROMA_DIR", str(Path(__file__).parent.parent / "rag_storage" / "lancedb"))
+LANCE_DIR = os.getenv("LANCE_DIR", str(Path(__file__).parent.parent / "rag_storage" / "lancedb"))
 EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 
 # Table schema

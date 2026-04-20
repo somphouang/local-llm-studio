@@ -2,7 +2,7 @@
 
 A fully **offline, self-hosted** LLM environment with built-in **RAG (Retrieval-Augmented Generation)** and a **Vector Database**. Drop in your own documents and chat with your knowledge base entirely on your own hardware — no cloud, no internet required on the target machine.
 
-Powered by `llama.cpp` (GGUF engine) + `ChromaDB` + `sentence-transformers` + `FastAPI`.
+Powered by `llama.cpp` (GGUF engine) + `LanceDB` + `FastEmbed` + `FastAPI`.
 
 ---
 
@@ -244,10 +244,10 @@ echo "RAG Server PID: $!"
    ▼
 [RAG Server — rag/app.py]  :8001   FastAPI
    │  ┌─────────────────┐
-   ├─►│ ChromaDB (disk) │  Vector Search  (fully local)
+   ├─►│ LanceDB (disk)  │  Vector Search  (fully local)
    │  └─────────────────┘
    │  ┌──────────────────────────────┐
-   ├─►│ sentence-transformers (CPU)  │  Offline Embeddings
+   ├─►│ FastEmbed / ONNX (CPU) │  Offline Embeddings (no torch)
    │  └──────────────────────────────┘
    │
    ▼
@@ -302,8 +302,8 @@ Set `N_GPU_LAYERS=-1` in `.env` to automatically offload all layers to GPU.
 
 ### How it works
 
-1. **Ingest** — Upload a document → text extracted & chunked → each chunk embedded with `all-MiniLM-L6-v2` → stored in ChromaDB on disk.
-2. **Chat** — Your question is embedded → top matching chunks fetched from ChromaDB → chunks + question sent to LLM → grounded answer with source citations returned.
+1. **Ingest** — Upload a document → text extracted & chunked → each chunk embedded with `BAAI/bge-small-en-v1.5` (via FastEmbed/ONNX) → stored in LanceDB on disk.
+2. **Chat** — Your question is embedded → top matching chunks fetched from LanceDB → chunks + question sent to LLM → grounded answer with source citations returned.
 
 ### RAG REST API
 
@@ -389,7 +389,7 @@ server {
 }
 ```
 
-Deploy the tarball to each node, run `start-server.sh` independently. Share `rag_storage/chroma/` via NFS for a unified vector index.
+Deploy the tarball to each node, run `start-server.sh` independently. Share `rag_storage/lancedb/` via NFS for a unified vector index.
 
 ### Vertical — Large Model GPU Split
 For 70B+ models that exceed single GPU VRAM, use `llama.cpp` native RPC tensor splitting. See the [llama.cpp RPC documentation](https://github.com/ggerganov/llama.cpp/blob/master/docs/rpc.md).
@@ -413,8 +413,8 @@ For 70B+ models that exceed single GPU VRAM, use `llama.cpp` native RPC tensor s
 | `LLM_MODEL` | `llama-3-8b` | Model alias for RAG requests |
 | `RAG_HOST` | `0.0.0.0` | RAG server bind address |
 | `RAG_PORT` | `8001` | RAG server port |
-| `CHROMA_DIR` | `./rag_storage/chroma` | ChromaDB disk persistence path |
-| `EMBED_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Local CPU embedding model |
+| `LANCE_DIR` | `./rag_storage/lancedb` | LanceDB vector store persistence path |
+| `EMBED_MODEL` | `BAAI/bge-small-en-v1.5` | FastEmbed ONNX model for offline vector embeddings |
 
 ---
 
@@ -449,11 +449,11 @@ local-llm-studio/
 ├── test-locally.ps1        # Automated smoke test (Windows PowerShell)
 │
 ├── models/                 # GGUF model files          (gitignored)
-├── rag_storage/            # ChromaDB + embedding cache (gitignored)
+├── rag_storage/            # LanceDB vector data + embedding model cache (gitignored)
 │
 ├── rag/
 │   ├── app.py              # RAG FastAPI application
-│   ├── vectorstore.py      # ChromaDB wrapper + query engine
+│   ├── vectorstore.py      # LanceDB wrapper + FastEmbed query engine
 │   ├── ingest.py           # PDF / DOCX / TXT / MD parser and chunker
 │   └── ui/
 │       └── index.html      # Dark-mode RAG Chat Web UI

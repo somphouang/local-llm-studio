@@ -15,14 +15,14 @@ pip download -d offline_packages -r requirements.txt
 pip download -d offline_packages -r requirements-rag.txt
 
 # Install huggingface_hub globally/venv to execute the Python script locally on the staging machine
-pip install huggingface_hub sentence-transformers
+pip install huggingface_hub fastembed
 
-# Pre-download the embedding model weights (all-MiniLM-L6-v2) so it is available fully offline
-echo "[1b/3] Pre-downloading sentence-transformers embedding model..."
+# Pre-download the embedding model weights (BAAI/bge-small-en-v1.5) so it is available fully offline
+echo "[1b/3] Pre-downloading FastEmbed model..."
 python3 -c "
-from sentence_transformers import SentenceTransformer
-model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', cache_folder='./rag_storage/embedding_models')
-print('Embedding model cached to ./rag_storage/embedding_models')
+from fastembed import TextEmbedding
+model = TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='./rag_storage/embedding_models')
+print('FastEmbed model cached to ./rag_storage/embedding_models')
 "
 
 # Download specific model using huggingface-cli

@@ -16,7 +16,7 @@ else
 fi
 
 # Install RAG-specific deps if not already present
-python3 -c "import chromadb" 2>/dev/null || {
+python3 -c "import lancedb" 2>/dev/null || {
     echo "Installing RAG dependencies from requirements-rag.txt..."
     pip install -r requirements-rag.txt
 }
