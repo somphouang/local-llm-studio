@@ -12,9 +12,35 @@ Powered by `llama.cpp` (GGUF engine) + `LanceDB` + `FastEmbed` + `FastAPI`.
 
 ---
 
-### Path A — Developer Local Test (Internet-Connected Machine)
+### Path A — One-Click Auto Setup (Internet-Connected Machine)
 
-Get the full stack running on your laptop/workstation in minutes using a tiny test model.
+Get the full stack (environment, dependencies, models, and servers) running on your laptop/workstation with a single script.
+
+**Step 1: Clone the repo**
+```bash
+git clone https://github.com/somphouang/local-llm-studio.git
+cd local-llm-studio
+```
+
+**Step 2: Run the Start-All script**
+```bash
+chmod +x start-all.sh
+./start-all.sh
+```
+> **Note:** The first run may take 5–10 minutes to compile `llama-cpp-python` from C++ source. If no models are found, it will automatically download a tiny test model.
+
+This script automatically sets up the virtual environment, installs dependencies, loads models, and starts **both** the LLM inference server and the RAG server + Web UI.
+
+**Step 3: Access the UI**
+Once the script says "ALL SYSTEMS GO!", open your browser:
+- **Chat UI:** http://localhost:8001/ui
+- **API Swagger:** http://localhost:8000/docs
+
+---
+
+### Path B — Manual Developer Test (Internet-Connected Machine)
+
+Get the full stack running manually step-by-step.
 
 **Step 1: Clone the repo**
 ```bash
@@ -97,7 +123,7 @@ Navigate to `http://localhost:8001/ui` in your browser. Upload a document and st
 
 ---
 
-### Path B — Package for an Air-Gapped Host (Run on Internet Machine)
+### Path C — Package for an Air-Gapped Host (Run on Internet Machine)
 
 This bundles everything your offline server will ever need into one tarball.
 
@@ -136,7 +162,7 @@ cp local-llm-studio-offline.tar.gz /mnt/usb/
 
 ---
 
-### Path C — Deploy on an Air-Gapped Host (Ubuntu 24.04 or RHEL 9.x)
+### Path D — Deploy on an Air-Gapped Host (Ubuntu 24.04 or RHEL 9.x)
 
 Run these commands **on the air-gapped server** after receiving the tarball.
 
@@ -440,6 +466,7 @@ local-llm-studio/
 ├── requirements.txt        # Pinned LLM server Python deps
 ├── requirements-rag.txt    # Pinned RAG server Python deps
 │
+├── start-all.sh            # ⚡ AUTORUN   — one-click setup & start all services
 ├── pack-online.sh          # ① RUN ONLINE  — download wheels + models → tarball
 ├── deploy-offline.sh       # ② RUN ON HOST — install offline from tarball
 ├── start-server.sh         # ③ START       — LLM inference server  :8000

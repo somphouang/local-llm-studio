@@ -12,7 +12,7 @@ else
   echo ".env file not found! Falling back to defaults."
 fi
 
-MODEL_PATH=${MODEL_PATH:-"./models/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"}
+MODEL_PATH=${MODEL_PATH:-"./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"}
 PORT=${PORT:-8000}
 HOST=${HOST:-"0.0.0.0"}
 N_CTX=${N_CTX:-8192}
